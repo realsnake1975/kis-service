@@ -1,0 +1,75 @@
+plugins {
+    id 'java-library'
+    id 'org.springframework.boot' version '4.1.2'
+    id 'maven-publish'
+}
+
+group = 'dev.kis'
+version = '0.1.0-SNAPSHOT'
+description = 'Spring Boot client for Korea Investment & Securities domestic stock REST APIs'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+    withSourcesJar()
+    withJavadocJar()
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
+    api 'org.springframework.boot:spring-boot-starter-webflux'
+    api 'org.springframework.boot:spring-boot-starter-cache'
+    api 'org.springframework.boot:spring-boot-starter-json'
+    implementation 'org.springframework.boot:spring-boot-autoconfigure'
+    implementation 'com.github.ben-manes.caffeine:caffeine'
+    annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
+    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+}
+
+tasks.named('test', Test) {
+    useJUnitPlatform {
+        excludeTags 'api'
+    }
+}
+
+tasks.register('apiTest', Test) {
+    description = 'Runs opt-in, read-only integration tests against the KIS PAPER API.'
+    group = 'verification'
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    useJUnitPlatform {
+        includeTags 'api'
+    }
+    systemProperty 'kis.api.tests', 'true'
+    shouldRunAfter tasks.named('test')
+}
+
+tasks.named('bootJar') {
+    enabled = false
+}
+
+tasks.named('jar') {
+    enabled = true
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+}
