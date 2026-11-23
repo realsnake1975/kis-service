@@ -1,8 +1,8 @@
 package dev.kis.dashboard;
 
 import dev.kis.openapi.KisEnvironment;
-import dev.kis.openapi.auth.KisApiCredential;
-import dev.kis.openapi.auth.KisCredentialRepository;
+import dev.kis.openapi.KisProperties;
+import dev.kis.openapi.auth.KisCredentialProvider;
 import dev.kis.openapi.domestic.DomesticStock;
 import dev.kis.openapi.domestic.DomesticStockPriceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,10 +11,7 @@ import reactor.core.publisher.Mono;
 
 import java.lang.reflect.Proxy;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DashboardControllerTest {
-    private final Map<KisEnvironment, KisApiCredential> storedCredentials = new HashMap<>();
     private final AtomicReference<String> searchedQuery = new AtomicReference<>();
     private final AtomicReference<List<Object>> trendArguments = new AtomicReference<>();
     private final AtomicReference<List<String>> appliedSchedule = new AtomicReference<>();
@@ -31,11 +27,12 @@ class DashboardControllerTest {
 
     @BeforeEach
     void setUp() {
-        KisCredentialRepository credentials = proxy(KisCredentialRepository.class, (method, args) -> switch (method) {
-            case "findById" -> Optional.ofNullable(storedCredentials.get(args[0]));
-            case "save" -> { KisApiCredential credential = (KisApiCredential) args[0]; storedCredentials.put(credential.getEnvironment(), credential); yield credential; }
-            default -> throw new UnsupportedOperationException(method);
-        });
+        KisProperties properties = new KisProperties();
+        properties.setEnvironment(KisEnvironment.REAL);
+        properties.getReal().setAppKey("PSabcdefghijwxyz");
+        properties.getReal().setAppSecret("real-secret");
+        properties.getReal().setAccountNumber("12345678");
+        KisCredentialProvider credentials = new KisCredentialProvider(properties);
         DomesticStockSearchService stocks = query -> {
             searchedQuery.set(query);
             return Mono.just(List.of(new DomesticStock("005930", "KR7005930003", "삼성전자", DomesticStock.Market.KOSPI)));
@@ -58,22 +55,26 @@ class DashboardControllerTest {
             default -> throw new UnsupportedOperationException(method);
         });
         PriceSchedule schedule = appliedSchedule::set;
-        controller = new DashboardController(credentials, stocks, history, watchRepository, schedule);
+        controller = new DashboardController(credentials, properties, stocks, history, watchRepository, schedule);
     }
 
     @Test
     void missingCredentialsAreReportedAsUnconfigured() {
         var result = controller.getCredentials(KisEnvironment.PAPER).block();
-        assertFalse((Boolean) result.get("configured"));
-        assertEquals("PAPER", result.get("environment"));
+        assertFalse(result.configured());
+        assertEquals("PAPER", result.environment());
+        assertEquals("", result.appKey());
+        assertFalse(result.active());
     }
 
     @Test
-    void savesCredentialsForSelectedEnvironment() {
-        var result = controller.saveCredentials(KisEnvironment.REAL,
-                new DashboardController.CredentialRequest("app-key", "app-secret")).block();
-        assertTrue(result.get("saved"));
-        assertEquals("app-key", storedCredentials.get(KisEnvironment.REAL).getAppKey());
+    void configuredCredentialsAreReportedMaskedWithoutTheSecret() {
+        var result = controller.getCredentials(KisEnvironment.REAL).block();
+        assertTrue(result.configured());
+        assertTrue(result.active());
+        assertEquals("PSab••••wxyz", result.appKey());
+        assertEquals("••••5678", result.accountNumber());
+        assertFalse(result.toString().contains("real-secret"));
     }
 
     @Test

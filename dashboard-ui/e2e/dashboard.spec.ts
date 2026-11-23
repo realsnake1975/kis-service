@@ -11,9 +11,8 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill({ json: body.codes.map(code => catalog.find(stock => stock.code === code)).filter(Boolean) })
   })
   await page.route('**/api/stocks/*/trend?**', route => route.fulfill({ json: [{ time: '2026-11-15T09:00:00Z', price: 76800 }, { time: '2026-11-15T10:00:00Z', price: 77200 }] }))
-  await page.route('**/api/admin/credentials/**', route => route.request().method() === 'GET'
-    ? route.fulfill({ status: 200, json: { configured: true, appKey: 'test••••' } })
-    : route.fulfill({ status: 200, json: { saved: true } }))
+  await page.route('**/api/admin/credentials/PAPER', route => route.fulfill({ json: { environment: 'PAPER', configured: false, appKey: '', accountNumber: '', active: false } }))
+  await page.route('**/api/admin/credentials/REAL', route => route.fulfill({ json: { environment: 'REAL', configured: true, appKey: 'PSab••••wxyz', accountNumber: '••••5678', active: true } }))
 })
 
 test('대시보드에서 종목을 검색하고 관심 목록에 추가한다', async ({ page }) => {
@@ -30,15 +29,15 @@ test('대시보드에서 종목을 검색하고 관심 목록에 추가한다', 
   await trendResponse
 })
 
-test('모의투자 API 인증 정보를 저장한다', async ({ page }) => {
+test('설정 파일의 API 인증 정보 상태를 읽기 전용으로 보여준다', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'API 설정' }).click()
   await expect(page.getByRole('heading', { name: 'KIS API 인증 정보' })).toBeVisible()
-  await expect(page.getByText(/등록됨 · App Key/)).toBeVisible()
-  await page.getByLabel('App Key').fill('test-app-key')
-  await page.getByLabel('App Secret').fill('test-app-secret')
-  await page.getByRole('button', { name: '인증 정보 저장' }).click()
-  await expect(page.getByRole('status')).toContainText('DB에 저장')
+  await expect(page.getByTestId('credential-REAL')).toContainText('사용 중')
+  await expect(page.getByTestId('credential-REAL')).toContainText('등록됨 · App Key PSab••••wxyz · 계좌 ••••5678')
+  await expect(page.getByTestId('credential-PAPER')).toContainText('설정되지 않음')
+  await expect(page.getByLabel('App Secret')).toHaveCount(0)
+  await expect(page.getByText('REAL 모드')).toBeVisible()
 })
 
 test('비로그인 사용자는 Google 및 GitHub 로그인 화면을 본다', async ({ page }) => {

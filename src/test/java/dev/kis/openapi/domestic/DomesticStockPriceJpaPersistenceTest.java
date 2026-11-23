@@ -1,8 +1,6 @@
 package dev.kis.openapi.domestic;
 
 import dev.kis.openapi.KisApiResponse;
-import dev.kis.openapi.KisEnvironment;
-import dev.kis.openapi.auth.KisApiCredential;
 import org.hibernate.SessionFactory;
 import org.hibernate.boot.MetadataSources;
 import org.hibernate.boot.registry.StandardServiceRegistry;
@@ -30,7 +28,6 @@ class DomesticStockPriceJpaPersistenceTest {
 
         try (SessionFactory sessionFactory = new MetadataSources(registry)
                 .addAnnotatedClass(DomesticStockPriceEntity.class)
-                .addAnnotatedClass(KisApiCredential.class)
                 .buildMetadata()
                 .buildSessionFactory()) {
             var output = new JsonMapper().readTree("""
@@ -60,17 +57,6 @@ class DomesticStockPriceJpaPersistenceTest {
                 assertTrue(loaded.getObservedAt().toString().startsWith("2026-11-15T01:00:00"));
             }
 
-            KisApiCredential credential = KisApiCredential.create(KisEnvironment.PAPER, "paper-key", "paper-secret");
-            try (var session = sessionFactory.openSession()) {
-                var transaction = session.beginTransaction();
-                session.persist(credential);
-                transaction.commit();
-            }
-            try (var session = sessionFactory.openSession()) {
-                KisApiCredential loaded = session.find(KisApiCredential.class, KisEnvironment.PAPER);
-                assertEquals("paper-key", loaded.getAppKey());
-                assertEquals("paper-secret", loaded.getAppSecret());
-            }
         } finally {
             StandardServiceRegistryBuilder.destroy(registry);
         }

@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Explicit, read-only calls against KIS. Run only with -Dkis.api.tests=true and paper credentials.
+ * Explicit, read-only calls against KIS. Run only with -Dkis.api.tests=true and PAPER credentials (KIS_PAPER_APP_KEY / KIS_PAPER_APP_SECRET).
  * Order submission/amendment/cancellation calls are intentionally excluded.
  */
 @Tag("api")

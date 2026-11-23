@@ -57,11 +57,15 @@ public class DomesticStockPriceEntity {
         entity.stockCode = event.symbol();
         entity.stockName = stockName;
         entity.currentPrice = decimal(output, "stck_prpr");
-        entity.priceChange = decimal(output, "prdy_vrss");
+        // KIS sends prdy_vrss already signed (e.g. "-2500" with sign "5"), but derive the sign from
+        // prdy_vrss_sign so the result is correct whether or not the value carries its own sign.
+        BigDecimal change = decimal(output, "prdy_vrss");
         String sign = text(output, "prdy_vrss_sign");
-        if (entity.priceChange != null && ("4".equals(sign) || "5".equals(sign))) {
-            entity.priceChange = entity.priceChange.negate();
+        if (change != null) {
+            change = change.abs();
+            if ("4".equals(sign) || "5".equals(sign)) change = change.negate();
         }
+        entity.priceChange = change;
         entity.changeRate = decimal(output, "prdy_ctrt");
         entity.observedAt = event.observedAt();
         entity.rawOutput = output.toString();

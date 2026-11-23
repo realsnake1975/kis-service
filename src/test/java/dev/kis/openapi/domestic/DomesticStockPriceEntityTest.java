@@ -32,6 +32,25 @@ class DomesticStockPriceEntityTest {
     }
 
     @Test
+    void doesNotDoubleNegateAlreadySignedPriceChange() throws Exception {
+        // Shape of a real KIS response on a down day: the change is already negative and the sign is "5".
+        var falling = new JsonMapper().readTree("""
+                {"stck_prpr":"180600","prdy_vrss":"-2500","prdy_vrss_sign":"5","prdy_ctrt":"-1.37"}
+                """);
+        var rising = new JsonMapper().readTree("""
+                {"stck_prpr":"183100","prdy_vrss":"2500","prdy_vrss_sign":"2","prdy_ctrt":"1.38"}
+                """);
+
+        assertEquals(new BigDecimal("-2500"), entityFor(falling).getPriceChange());
+        assertEquals(new BigDecimal("2500"), entityFor(rising).getPriceChange());
+    }
+
+    private static DomesticStockPriceEntity entityFor(tools.jackson.databind.JsonNode output) {
+        return DomesticStockPriceEntity.from(new DomesticStockPriceEvent("005930", Instant.parse("2026-11-15T01:00:00Z"),
+                new KisApiResponse("0", "0", "ok", output, null, null), null), "삼성전자");
+    }
+
+    @Test
     void leavesMissingOrNonNumericQuoteFieldsNull() throws Exception {
         var output = new JsonMapper().readTree("""
                 {"stck_prpr":"unknown","prdy_vrss":"","prdy_ctrt":null}

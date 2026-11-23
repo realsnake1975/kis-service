@@ -1,6 +1,7 @@
 package dev.kis.openapi;
 
 import com.github.benmanes.caffeine.cache.Caffeine;
+import dev.kis.openapi.auth.KisCredentialProvider;
 import dev.kis.openapi.auth.KisTokenProvider;
 import dev.kis.openapi.domestic.DomesticStockClient;
 import dev.kis.openapi.domestic.DomesticStockMasterClient;
@@ -20,7 +21,7 @@ import java.time.Duration;
 @AutoConfiguration
 @EnableCaching
 @EnableConfigurationProperties(KisProperties.class)
-@Import({KisTokenProvider.class, KisRestClient.class, DomesticStockClient.class, DomesticStockMasterClient.class,
+@Import({KisCredentialProvider.class, KisTokenProvider.class, KisRestClient.class, DomesticStockClient.class, DomesticStockMasterClient.class,
         DomesticStockPriceMonitor.class})
 public class KisAutoConfiguration {
     @Bean

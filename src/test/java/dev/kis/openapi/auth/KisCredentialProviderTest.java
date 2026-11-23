@@ -1,21 +1,23 @@
 package dev.kis.openapi.auth;
 
 import dev.kis.openapi.KisEnvironment;
+import dev.kis.openapi.KisProperties;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Proxy;
-import java.util.Map;
-import java.util.Optional;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KisCredentialProviderTest {
     @Test
-    void readsCredentialsForTheSelectedEnvironmentFromRepository() {
-        KisCredentialProvider provider = new KisCredentialProvider(repository(Map.of(
-                KisEnvironment.PAPER, KisApiCredential.create(KisEnvironment.PAPER, "paper-key", "paper-secret"),
-                KisEnvironment.REAL, KisApiCredential.create(KisEnvironment.REAL, "real-key", "real-secret"))));
+    void readsCredentialsForTheSelectedEnvironmentFromProperties() {
+        KisProperties properties = new KisProperties();
+        properties.getPaper().setAppKey("paper-key");
+        properties.getPaper().setAppSecret("paper-secret");
+        properties.getReal().setAppKey(" real-key ");
+        properties.getReal().setAppSecret("real-secret\n");
+        KisCredentialProvider provider = new KisCredentialProvider(properties);
 
         assertEquals(new KisApiCredentials("paper-key", "paper-secret"), provider.getCredentials(KisEnvironment.PAPER));
         assertEquals(new KisApiCredentials("real-key", "real-secret"), provider.getCredentials(KisEnvironment.REAL));
@@ -23,24 +25,23 @@ class KisCredentialProviderTest {
 
     @Test
     void failsClearlyWhenEnvironmentCredentialsAreMissing() {
-        KisCredentialProvider provider = new KisCredentialProvider(repository(Map.of()));
+        KisProperties properties = new KisProperties();
+        properties.getReal().setAppKey("real-key");
+        properties.getReal().setAppSecret("real-secret");
+        KisCredentialProvider provider = new KisCredentialProvider(properties);
 
         IllegalStateException error = assertThrows(IllegalStateException.class,
                 () -> provider.getCredentials(KisEnvironment.PAPER));
 
-        assertEquals("No KIS app credentials are stored for environment PAPER", error.getMessage());
+        assertEquals("KIS app credentials are not configured for environment PAPER "
+                + "(kis.openapi.paper.app-key / app-secret)", error.getMessage());
+        assertFalse(provider.isConfigured(KisEnvironment.PAPER));
+        assertTrue(provider.isConfigured(KisEnvironment.REAL));
     }
 
-    private KisCredentialRepository repository(Map<KisEnvironment, KisApiCredential> credentials) {
-        return (KisCredentialRepository) Proxy.newProxyInstance(
-                KisCredentialRepository.class.getClassLoader(),
-                new Class<?>[]{KisCredentialRepository.class},
-                (proxy, method, args) -> {
-                    if (method.getName().equals("findById")) {
-                        return Optional.ofNullable(credentials.get(args[0]));
-                    }
-                    if (method.getName().equals("toString")) return "StubKisCredentialRepository";
-                    return null;
-                });
+    @Test
+    void doesNotExposeSecretsInToString() {
+        assertEquals("KisApiCredentials[appKey=****, appSecret=****]",
+                new KisApiCredentials("key", "secret").toString());
     }
 }

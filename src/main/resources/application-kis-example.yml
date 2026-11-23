@@ -1,13 +1,17 @@
 # Copy the desired values into your application's application.yml or an external config file.
-# App keys/secrets are loaded from kis_api_credential in MySQL; only DB credentials stay here.
+# Never commit plain app keys/secrets: use environment variables or Jasypt ENC(...) values.
 kis:
   openapi:
     # PAPER by default. Change to REAL only after checking the selected credentials and account.
     environment: ${KIS_ENVIRONMENT:PAPER}
     paper:
+      app-key: ${KIS_PAPER_APP_KEY:}
+      app-secret: ${KIS_PAPER_APP_SECRET:}
       account-number: ${KIS_PAPER_ACCOUNT_NUMBER:}
       account-product-code: ${KIS_PAPER_ACCOUNT_PRODUCT_CODE:01}
     real:
+      app-key: ${KIS_REAL_APP_KEY:}
+      app-secret: ${KIS_REAL_APP_SECRET:}
       account-number: ${KIS_REAL_ACCOUNT_NUMBER:}
       account-product-code: ${KIS_REAL_ACCOUNT_PRODUCT_CODE:01}
     domestic-stock-monitor:
@@ -16,6 +20,7 @@ kis:
       symbols: []
       persistence:
         enabled: false
+# MySQL is only needed when domestic-stock-monitor.persistence.enabled is true.
 spring:
   datasource:
     url: ${KIS_DB_URL:jdbc:mysql://localhost:3306/kis_service?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}

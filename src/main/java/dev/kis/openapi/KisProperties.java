@@ -24,6 +24,10 @@ public class KisProperties {
     @Getter
     @Setter
     public static class Account {
+        /** KIS app key. Keep it out of source control, e.g. as an encrypted Jasypt {@code ENC(...)} value. */
+        private String appKey;
+        /** KIS app secret. Keep it out of source control, e.g. as an encrypted Jasypt {@code ENC(...)} value. */
+        private String appSecret;
         private String accountNumber;
         private String accountProductCode = "01";
 

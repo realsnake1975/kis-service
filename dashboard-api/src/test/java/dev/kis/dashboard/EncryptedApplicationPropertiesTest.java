@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class EncryptedApplicationPropertiesTest {
     @Test
     @EnabledIfEnvironmentVariable(named = "JASYPT_ENCRYPTOR_PASSWORD", matches = ".+")
-    void decryptsOAuthAndDatabaseValuesFromApplicationConfiguration() throws IOException {
+    void decryptsOAuthDatabaseAndKisValuesFromApplicationConfiguration() throws IOException {
         String yaml = Files.readString(Path.of("src/main/resources/application.yml"));
         String googleIdCipher = find(yaml, "google", "client-id");
         String googleSecretCipher = find(yaml, "google", "client-secret");
@@ -40,7 +40,10 @@ class EncryptedApplicationPropertiesTest {
         assertTrue(!encryptor.decrypt(githubSecretCipher).isBlank());
         assertTrue(encryptor.decrypt(dbUrlCipher).startsWith("jdbc:mysql://localhost:3306/kis_service?"));
         assertTrue(!encryptor.decrypt(dbUserCipher).isBlank());
-        assertTrue(encryptor.decrypt(dbPasswordCipher).isEmpty());
+        assertTrue(!encryptor.decrypt(dbPasswordCipher).isBlank());
+        assertTrue(!encryptor.decrypt(find(yaml, "real", "app-key")).isBlank());
+        assertTrue(!encryptor.decrypt(find(yaml, "real", "app-secret")).isBlank());
+        assertTrue(encryptor.decrypt(find(yaml, "real", "account-number")).matches("\\d{8}"));
     }
 
     private static String find(String yaml, String section, String property) {
@@ -52,6 +55,9 @@ class EncryptedApplicationPropertiesTest {
         } else if (section.equals("github")) {
             sectionStart = yaml.indexOf("          github:");
             sectionEnd = yaml.indexOf("\n  web:", sectionStart + 1);
+        } else if (section.equals("real")) {
+            sectionStart = yaml.indexOf("    real:");
+            sectionEnd = yaml.indexOf("\n    domestic-stock-monitor:", sectionStart + 1);
         } else {
             sectionStart = yaml.indexOf("  datasource:");
             sectionEnd = yaml.indexOf("\n  jpa:", sectionStart + 1);

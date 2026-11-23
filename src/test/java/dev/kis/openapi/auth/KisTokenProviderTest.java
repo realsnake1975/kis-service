@@ -1,6 +1,7 @@
 package dev.kis.openapi.auth;
 
 import dev.kis.openapi.KisEnvironment;
+import dev.kis.openapi.KisProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.HttpMessageWriter;
@@ -11,7 +12,6 @@ import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
-import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class KisTokenProviderTest {
     @Test
-    void sendsDatabaseCredentialsInTheTokenRequestBody() {
+    void sendsConfiguredCredentialsInTheTokenRequestBody() {
         AtomicReference<String> requestUrl = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
         WebClient.Builder client = WebClient.builder().exchangeFunction(request -> {
@@ -51,28 +51,16 @@ class KisTokenProviderTest {
                     .body("{\"access_token\":\"access-token\",\"token_type\":\"Bearer\",\"access_token_token_expired\":\"2099-01-01 00:00:00\"}")
                     .build());
         });
-        KisCredentialProvider credentials = new KisCredentialProvider(repository(
-                KisApiCredential.create(KisEnvironment.PAPER, "db-paper-key", "db-paper-secret")));
-        KisTokenProvider provider = new KisTokenProvider(client, credentials);
+        KisProperties properties = new KisProperties();
+        properties.getPaper().setAppKey("cfg-paper-key");
+        properties.getPaper().setAppSecret("cfg-paper-secret");
+        KisTokenProvider provider = new KisTokenProvider(client, new KisCredentialProvider(properties));
 
         KisAccessToken token = provider.getAccessToken(KisEnvironment.PAPER);
 
         assertEquals("access-token", token.accessToken());
         assertEquals(KisEnvironment.PAPER.baseUrl() + "/oauth2/tokenP", requestUrl.get());
-        assertTrue(requestBody.get().contains("\"appkey\":\"db-paper-key\""));
-        assertTrue(requestBody.get().contains("\"appsecret\":\"db-paper-secret\""));
-    }
-
-    private KisCredentialRepository repository(KisApiCredential credential) {
-        return (KisCredentialRepository) Proxy.newProxyInstance(
-                KisCredentialRepository.class.getClassLoader(),
-                new Class<?>[]{KisCredentialRepository.class},
-                (proxy, method, args) -> {
-                    if (method.getName().equals("findById")) {
-                        return args[0] == KisEnvironment.PAPER ? Optional.of(credential) : Optional.empty();
-                    }
-                    if (method.getName().equals("toString")) return "StubKisCredentialRepository";
-                    return null;
-                });
+        assertTrue(requestBody.get().contains("\"appkey\":\"cfg-paper-key\""));
+        assertTrue(requestBody.get().contains("\"appsecret\":\"cfg-paper-secret\""));
     }
 }

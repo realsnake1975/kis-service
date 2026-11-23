@@ -10,31 +10,23 @@ Spring Boot starter for the Korea Investment & Securities domestic-stock REST AP
 
 Build the library with `gradlew.bat clean build` on Windows or `./gradlew clean build` on macOS/Linux. Publish it to the local Maven repository with `gradlew.bat publishToMavenLocal` or `./gradlew publishToMavenLocal`.
 
-Run JUnit 5 unit tests with `gradlew.bat test`. KIS API-call tests are separate and read-only; run `gradlew.bat apiTest` after configuring a MySQL database, inserting the PAPER app credentials into `kis_api_credential`, and setting the account environment variables below. The API-call test suite refuses to run against `REAL`.
+Run JUnit 5 unit tests with `gradlew.bat test`. KIS API-call tests are separate and read-only; run `gradlew.bat apiTest` after setting the PAPER app key/secret and account environment variables below. The API-call test suite refuses to run against `REAL`.
 
 ## Configuration
 
-Copy `src/main/resources/application-kis-example.yml` into the consuming app as `application.yml`, or configure the same properties in an external config file. The MySQL connection values and account numbers come from configuration; KIS app keys and app secrets are read from the JPA-managed `kis_api_credential` table. PAPER and REAL credentials are stored separately; `PAPER` is the default.
+Copy `src/main/resources/application-kis-example.yml` into the consuming app as `application.yml`, or configure the same properties in an external config file. KIS app keys, app secrets and account numbers are read from `kis.openapi.paper.*` / `kis.openapi.real.*`. PAPER and REAL are configured separately; `PAPER` is the default, and the library does not silently fall back between environments. MySQL is only needed for the optional quote history.
 
 Example environment variables:
 
 ```powershell
 $env:KIS_ENVIRONMENT = 'PAPER'
-$env:KIS_DB_URL = 'jdbc:mysql://localhost:3306/kis_service?serverTimezone=Asia/Seoul&characterEncoding=UTF-8'
-$env:KIS_DB_USERNAME = 'kis_service'
-$env:KIS_DB_PASSWORD = '...'
+$env:KIS_PAPER_APP_KEY = '...'
+$env:KIS_PAPER_APP_SECRET = '...'
 $env:KIS_PAPER_ACCOUNT_NUMBER = '12345678'
 $env:KIS_PAPER_ACCOUNT_PRODUCT_CODE = '01'
 ```
 
-Hibernate creates the `kis_api_credential` table with `ddl-auto: update`. Add credentials using a DB client or parameterized SQL; never commit the key or secret:
-
-```sql
-INSERT INTO kis_api_credential (environment, app_key, app_secret)
-VALUES ('PAPER', '<paper-app-key>', '<paper-app-secret>');
-```
-
-For real trading, insert a separate `REAL` row and set `KIS_ENVIRONMENT=REAL`. The library does not silently fall back between environments. Restrict database access because the app secret is stored in this table.
+Never commit a plain app key or secret. Either supply them through the environment as above, or store them in the config file as Jasypt `ENC(...)` values (see the dashboard section). For real trading, set the `kis.openapi.real.*` values and `KIS_ENVIRONMENT=REAL`.
 
 ## Use from a Spring application
 
@@ -170,9 +162,9 @@ The Gradle runtime includes MySQL Connector/J 26.10.0, the current GA driver at 
 
 ## Dashboard (React + Spring WebFlux)
 
-The optional `dashboard-api` application provides a responsive React/Vite dashboard. It includes Google/GitHub OAuth login, masked credential status and replacement forms, domestic stock master search, a JPA-backed watchlist that updates the one-minute quote monitor, and daily/weekly/monthly/quarterly/yearly price history charts. The dashboard uses the same MySQL database and KIS credentials as the library.
+The optional `dashboard-api` application provides a responsive React/Vite dashboard. It includes Google/GitHub OAuth login, a read-only masked status of the configured KIS credentials, domestic stock master search, a JPA-backed watchlist that updates the one-minute quote monitor, and daily/weekly/monthly/quarterly/yearly price history charts. The dashboard does not place orders.
 
-The MySQL URL/username/password and the Google/GitHub OAuth client IDs and secrets are stored encrypted with [Jasypt](https://github.com/ulisesbocchio/jasypt-spring-boot) as `ENC(...)` values in `dashboard-api/src/main/resources/application.yml`. Only the Jasypt master password is needed at runtime:
+The KIS `REAL` app key, app secret and account number, the MySQL URL/username/password, and the Google/GitHub OAuth client IDs and secrets are stored encrypted with [Jasypt](https://github.com/ulisesbocchio/jasypt-spring-boot) as `ENC(...)` values in `dashboard-api/src/main/resources/application.yml`. Only the Jasypt master password is needed at runtime:
 
 ```powershell
 $env:JASYPT_ENCRYPTOR_PASSWORD = '...'
@@ -180,7 +172,7 @@ $env:JASYPT_ENCRYPTOR_PASSWORD = '...'
 
 Keep this password out of source control; without it the application cannot start. The values use `PBEWITHHMACSHA512ANDAES_256` with 100,000 key-obtention iterations, random salt/IV, and base64 output. To change a value, encrypt it with a `StandardPBEStringEncryptor` configured the same way (see `EncryptedApplicationPropertiesTest`) and replace the matching `ENC(...)` entry. To verify that the committed values decrypt, run `./gradlew.bat :dashboard-api:test` with `JASYPT_ENCRYPTOR_PASSWORD` set; `EncryptedApplicationPropertiesTest` and `OAuthConfigurationIntegrationTest` are skipped when it is absent.
 
-Account numbers are not encrypted. Provide them with an optional `application-kis.yml` on the dashboard classpath (it is imported if present; copy the `kis.openapi` block from `application-kis-example.yml`), or with Spring's standard environment variables such as `KIS_OPENAPI_ENVIRONMENT`, `KIS_OPENAPI_PAPER_ACCOUNTNUMBER`, and `KIS_OPENAPI_PAPER_ACCOUNTPRODUCTCODE`.
+The dashboard runs against `REAL` by default (`kis.openapi.environment: ${KIS_ENVIRONMENT:REAL}`), because only REAL credentials are configured there. To use a PAPER account instead, add encrypted `kis.openapi.paper.app-key` / `app-secret` / `account-number` entries and set `KIS_ENVIRONMENT=PAPER`. Changing a credential means re-encrypting it, replacing the `ENC(...)` value, and restarting the API; the dashboard cannot edit credentials.
 
 Start the API and frontend in separate terminals:
 
@@ -191,7 +183,7 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://localhost:5173`. Register OAuth callback URLs as `http://localhost:5173/login/oauth2/code/google` and `http://localhost:5173/login/oauth2/code/github` for local Vite use. Set `KIS_GOOGLE_REDIRECT_URI` and `KIS_GITHUB_REDIRECT_URI` when deploying behind a different public URL. Do not commit provider secrets. The API stores KIS app credentials in `kis_api_credential`, and the watchlist in `kis_dashboard_watch`; scheduled quotes continue to use the existing `kis_stock_price_history` table.
+Open `http://localhost:5173`. Register OAuth callback URLs as `http://localhost:5173/login/oauth2/code/google` and `http://localhost:5173/login/oauth2/code/github` for local Vite use. Set `KIS_GOOGLE_REDIRECT_URI` and `KIS_GITHUB_REDIRECT_URI` when deploying behind a different public URL. Do not commit plain provider or KIS secrets. The API stores the watchlist in `kis_dashboard_watch`; scheduled quotes use the `kis_stock_price_history` table.
 
 The UI E2E suite mocks OAuth sessions, the stock master, credentials and trend responses; it does not call KIS or a provider account:
 
