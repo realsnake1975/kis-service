@@ -1,1 +1,3 @@
 dev.kis.openapi.KisAutoConfiguration
+dev.kis.openapi.auth.KisCredentialPersistenceConfiguration
+dev.kis.openapi.domestic.DomesticStockPricePersistenceConfiguration

@@ -5,6 +5,7 @@ import dev.kis.openapi.KisApiPage;
 import dev.kis.openapi.KisEnvironment;
 import dev.kis.openapi.KisProperties;
 import dev.kis.openapi.internal.KisApiTransport;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
@@ -12,6 +13,7 @@ import java.math.BigDecimal;
 import java.util.Map;
 
 @Service
+@RequiredArgsConstructor
 public class DomesticStockClient {
     private static final String PRICE_PATH = "/uapi/domestic-stock/v1/quotations/inquire-price";
     private static final String ORDER_PATH = "/uapi/domestic-stock/v1/trading/order-cash";
@@ -22,11 +24,6 @@ public class DomesticStockClient {
 
     private final KisApiTransport restClient;
     private final KisProperties properties;
-
-    public DomesticStockClient(KisApiTransport restClient, KisProperties properties) {
-        this.restClient = restClient;
-        this.properties = properties;
-    }
 
     public Mono<KisApiResponse> getPrice(String symbol) {
         requireSymbol(symbol);

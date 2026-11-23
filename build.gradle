@@ -29,11 +29,18 @@ dependencies {
     api 'org.springframework.boot:spring-boot-starter-webflux'
     api 'org.springframework.boot:spring-boot-starter-cache'
     api 'org.springframework.boot:spring-boot-starter-json'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    runtimeOnly 'com.mysql:mysql-connector-j:26.10.0'
+    compileOnly 'org.projectlombok:lombok:1.18.48'
     implementation 'org.springframework.boot:spring-boot-autoconfigure'
     implementation 'com.github.ben-manes.caffeine:caffeine'
     annotationProcessor platform('org.springframework.boot:spring-boot-dependencies:4.1.2')
+    annotationProcessor 'org.projectlombok:lombok:1.18.48'
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly 'com.h2database:h2'
+    testCompileOnly 'org.projectlombok:lombok:1.18.48'
+    testAnnotationProcessor 'org.projectlombok:lombok:1.18.48'
 }
 
 tasks.withType(Test).configureEach {

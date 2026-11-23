@@ -1,35 +1,48 @@
 package dev.kis.openapi;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import lombok.Getter;
+import lombok.Setter;
+
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 @ConfigurationProperties("kis.openapi")
+@Getter
+@Setter
 public class KisProperties {
     private KisEnvironment environment = KisEnvironment.PAPER;
     private final Account paper = new Account();
     private final Account real = new Account();
-
-    public KisEnvironment getEnvironment() { return environment; }
-    public void setEnvironment(KisEnvironment environment) { this.environment = environment; }
-    public Account getPaper() { return paper; }
-    public Account getReal() { return real; }
+    private final DomesticStockMonitor domesticStockMonitor = new DomesticStockMonitor();
 
     public Account account(KisEnvironment selected) {
         return selected == KisEnvironment.REAL ? real : paper;
     }
 
+    @Getter
+    @Setter
     public static class Account {
-        private String appKey;
-        private String appSecret;
         private String accountNumber;
         private String accountProductCode = "01";
 
-        public String getAppKey() { return appKey; }
-        public void setAppKey(String appKey) { this.appKey = appKey; }
-        public String getAppSecret() { return appSecret; }
-        public void setAppSecret(String appSecret) { this.appSecret = appSecret; }
-        public String getAccountNumber() { return accountNumber; }
-        public void setAccountNumber(String accountNumber) { this.accountNumber = accountNumber; }
-        public String getAccountProductCode() { return accountProductCode; }
-        public void setAccountProductCode(String accountProductCode) { this.accountProductCode = accountProductCode; }
+    }
+
+    @Getter
+    @Setter
+    public static class DomesticStockMonitor {
+        private boolean enabled;
+        private Duration interval = Duration.ofMinutes(1);
+        private List<String> symbols = new ArrayList<>();
+        private final Persistence persistence = new Persistence();
+
+        public void setSymbols(List<String> symbols) { this.symbols = symbols == null ? new ArrayList<>() : new ArrayList<>(symbols); }
+    }
+
+    @Getter
+    @Setter
+    public static class Persistence {
+        private boolean enabled;
     }
 }
