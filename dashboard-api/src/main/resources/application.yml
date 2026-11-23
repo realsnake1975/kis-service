@@ -1,0 +1,48 @@
+server:
+  port: ${KIS_DASHBOARD_PORT:8081}
+kis:
+  openapi:
+    domestic-stock-monitor:
+      enabled: true
+      interval: 1m
+      persistence:
+        enabled: true
+spring:
+  config:
+    import: optional:classpath:application-kis.yml
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ENC(ClzdwmzKe4wI4S1cTuCh5GYuwYIxZ5gaAMX4vdRUnHP7xXtPwtIrWPpentBRf/8wzTYD7COiLa9kAb6UQ0WE+d87SuQtrdYCWVeJ1u9zpRHnuDUW/W/7/kdMEinoWQYshd9qOzrhp4DmvqGZ0wJZzg==)
+            scope: openid,profile,email
+            redirect-uri: ${KIS_GOOGLE_REDIRECT_URI:http://localhost:5173/login/oauth2/code/google}
+            client-secret: ENC(QaXrhCllHH2rPyGDJKA6u8yzw3N+5gkzr5AoPZXW5/j0c2tuS3zKFggLBvDhIfP7MgbFqa3WDGSCunSVxteNCOjkaAeBF6AgJaicgoNreB0=)
+          github:
+            client-id: ENC(o8WIKbKkGL5dTet0itBAGNxTdxuFPj6kcIWSGg2USTu1250Sgbo2o5s4lIZ3epH+t5DUstBQ15yaTk8625NFHA==)
+            scope: read:user,user:email
+            redirect-uri: ${KIS_GITHUB_REDIRECT_URI:http://localhost:5173/login/oauth2/code/github}
+            client-secret: ENC(ZWV1bewLjgeET5OoNns2oMl30ahTdGmbvJBS4n6B/ci0Cf2ud53vDLd6ttUnvkBIciYWtP/HIxxw/9VmjahBhXllQXmUDNxRhmzNCllwbmQ=)
+  web:
+    resources:
+      static-locations: classpath:/static/
+  datasource:
+    url: ENC(XShzvNSi/io6Ydrp4v9cYZee0ZyJRZg+zIhiVGjXnqvPXXFu9DTiKivG8LLIQC5aMVGV5QiA5qYBQMtLB+giWcKj+YkyEtDU8s3ZgLuYCcr2xiBsNcQ78wvTn9TVAaGsAAfCBAtrz9UqwTaO/hDeEaGDGdKIatOSmac18GxVMu0=)
+    username: ENC(fuCaIdCnXDSYuWeA0OjEcs0rU1SfBB0JXjKmz7Yc8U+dyEO+lnd08847CnaiCg6U)
+    password: ENC(JXmRuUY2KzlHpxW/PxbiRnwZPQ0sYso+UIOJlNJUFI1fkpWAyBUDeLqRnYVUwY3g)
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: update
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD}
+    algorithm: PBEWITHHMACSHA512ANDAES_256
+    key-obtention-iterations: 100000
+    provider-name: SunJCE
+    salt-generator-classname: org.jasypt.salt.RandomSaltGenerator
+    iv-generator-classname: org.jasypt.iv.RandomIvGenerator
+    string-output-type: base64

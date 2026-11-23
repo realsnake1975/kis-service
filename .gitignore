@@ -2,3 +2,10 @@
 build/
 .idea/
 *.iml
+dashboard-ui/node_modules/
+dashboard-ui/.pnpm-store/
+dashboard-ui/dist/
+dashboard-ui/test-results/
+dashboard-ui/playwright-report/
+dashboard-ui/.playwright-browsers/
+dashboard-ui/tsconfig.tsbuildinfo

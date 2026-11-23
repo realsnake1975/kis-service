@@ -10,23 +10,31 @@ Spring Boot starter for the Korea Investment & Securities domestic-stock REST AP
 
 Build the library with `gradlew.bat clean build` on Windows or `./gradlew clean build` on macOS/Linux. Publish it to the local Maven repository with `gradlew.bat publishToMavenLocal` or `./gradlew publishToMavenLocal`.
 
-Run JUnit 5 unit tests with `gradlew.bat test`. KIS API-call tests are separate and read-only; run `gradlew.bat apiTest` only after setting the `KIS_PAPER_*` environment variables shown below. The API-call test suite refuses to run against `REAL`.
+Run JUnit 5 unit tests with `gradlew.bat test`. KIS API-call tests are separate and read-only; run `gradlew.bat apiTest` after configuring a MySQL database, inserting the PAPER app credentials into `kis_api_credential`, and setting the account environment variables below. The API-call test suite refuses to run against `REAL`.
 
 ## Configuration
 
-Copy `src/main/resources/application-kis-example.yml` into the consuming app as `application.yml`, or configure the same properties in an external config file. Keep credentials outside source control. The environment and credentials/accounts are separate for paper and live trading; `PAPER` is the default.
+Copy `src/main/resources/application-kis-example.yml` into the consuming app as `application.yml`, or configure the same properties in an external config file. The MySQL connection values and account numbers come from configuration; KIS app keys and app secrets are read from the JPA-managed `kis_api_credential` table. PAPER and REAL credentials are stored separately; `PAPER` is the default.
 
 Example environment variables:
 
 ```powershell
 $env:KIS_ENVIRONMENT = 'PAPER'
-$env:KIS_PAPER_APP_KEY = '...'
-$env:KIS_PAPER_APP_SECRET = '...'
+$env:KIS_DB_URL = 'jdbc:mysql://localhost:3306/kis_service?serverTimezone=Asia/Seoul&characterEncoding=UTF-8'
+$env:KIS_DB_USERNAME = 'kis_service'
+$env:KIS_DB_PASSWORD = '...'
 $env:KIS_PAPER_ACCOUNT_NUMBER = '12345678'
 $env:KIS_PAPER_ACCOUNT_PRODUCT_CODE = '01'
 ```
 
-For real trading, set `KIS_ENVIRONMENT=REAL` and provide the separate `KIS_REAL_*` values. The library does not silently fall back between environments.
+Hibernate creates the `kis_api_credential` table with `ddl-auto: update`. Add credentials using a DB client or parameterized SQL; never commit the key or secret:
+
+```sql
+INSERT INTO kis_api_credential (environment, app_key, app_secret)
+VALUES ('PAPER', '<paper-app-key>', '<paper-app-secret>');
+```
+
+For real trading, insert a separate `REAL` row and set `KIS_ENVIRONMENT=REAL`. The library does not silently fall back between environments. Restrict database access because the app secret is stored in this table.
 
 ## Use from a Spring application
 
@@ -77,6 +85,77 @@ Do not call a real order until the selected `kis.openapi.environment`, app crede
 
 OAuth tokens are cached through Spring's cache abstraction and Caffeine under a key for each environment. The cache expires after 23 hours, providing a one-hour margin against the one-day token lifetime described in KIS's Python sample. Failed token requests are not cached. If the consuming app supplies another `CacheManager`, this auto-configuration uses it; ensure its `kisAccessTokens` cache has a suitably short TTL.
 
+## Domestic stock master
+
+`DomesticStockMasterClient` downloads the official KOSPI and KOSDAQ master files from KIS (no API credentials required), parses the daily CP949 fixed-width files, and keeps the result in memory for 24 hours. The first lookup needs an internet connection. Call `refresh()` to force a download sooner.
+
+```java
+Mono<List<DomesticStock>> all = stockMaster.getAll();
+Mono<List<DomesticStock>> samsung = stockMaster.search("삼성전자", null); // partial, case-insensitive name
+Mono<List<DomesticStock>> byCode = stockMaster.search(null, "005930"); // exact code
+Mono<List<DomesticStock>> allMatches = stockMaster.search(null, null); // no filters: all entries
+```
+
+When both name and code are supplied, both filters apply. Each result includes the short code, standard code, Korean name, and market (`KOSPI` or `KOSDAQ`). The data includes the securities present in KIS's exchange master files and is refreshed at most once per 24 hours unless `refresh()` is called.
+
+## Scheduled domestic stock prices
+
+To poll selected stocks once per minute, enable the optional monitor in the consuming application's configuration. It is disabled by default. Each code is queried sequentially with a small spacing between requests, and each result or request error is published as a `DomesticStockPriceEvent` through Spring's application event system.
+
+```yaml
+kis:
+  openapi:
+    domestic-stock-monitor:
+      enabled: true
+      interval: 1m
+      symbols: ["005930", "000660"]
+```
+
+Consume results with an event listener:
+
+```java
+@Component
+class StockPriceListener {
+    @EventListener
+    void onPrice(DomesticStockPriceEvent event) {
+        if (event.isSuccess()) {
+            System.out.println(event.symbol() + ": " + event.response().output());
+        } else {
+            System.err.println(event.symbol() + " lookup failed: " + event.errorMessage());
+        }
+    }
+}
+```
+
+The first polling cycle starts when the application starts; subsequent cycles start on the configured interval. Codes are queried sequentially with a short spacing. If a cycle is still running at the next tick, that tick is skipped so requests never overlap or build up in a queue. The interval must be positive and codes must be six digits.
+
+### Optional MySQL history
+
+Scheduled successful responses can also be appended to `kis_stock_price_history` with a JPA entity and Spring Data JPA repository. Enable persistence and configure a MySQL datasource. Spring Boot's JDBC datasource uses HikariCP; credentials should come from environment variables.
+
+```yaml
+kis:
+  openapi:
+    domestic-stock-monitor:
+      persistence:
+        enabled: true
+spring:
+  datasource:
+    url: ${KIS_DB_URL:jdbc:mysql://localhost:3306/kis_service?serverTimezone=Asia/Seoul&characterEncoding=UTF-8}
+    username: ${KIS_DB_USERNAME:kis_service}
+    password: ${KIS_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: update
+```
+
+The entity maps to `kis_stock_price_history`; Hibernate creates or updates the table with `ddl-auto: update`. Each successful scheduled quote stores its code, master-file name, current price, signed change, change rate, observation time, and original KIS `output` JSON. Database writes run on Reactor's bounded-elastic scheduler so they do not block the price polling thread. Failed KIS calls are published as events and are not saved as quotes.
+
+The Gradle runtime includes MySQL Connector/J 26.10.0, the current GA driver at the time of this change; Oracle states that Connector/J 26.10 works with MySQL Server 8.0 and later. If you manage the driver separately, use [the official Connector/J compatibility guidance](https://dev.mysql.com/doc/connector-j/en/connector-j-versions.html).
+
 ## Initial API surface
 
 - `getPrice(symbol)`: domestic stock quote (`FHKST01010100`)
@@ -84,6 +163,48 @@ OAuth tokens are cached through Spring's cache abstraction and Caffeine under a 
 - `getBalance()`: domestic stock balance
 - `amendOrCancelOrder(request)`: amend (`01`) or cancel (`02`) an existing domestic cash order
 - `getDailyOrders(query)`: daily order/fill history with explicit continuation page support
+- `DomesticStockMasterClient.getAll()`: all KOSPI/KOSDAQ master entries
+- `DomesticStockMasterClient.search(name, code)`: filter by optional partial name and exact code
+- `DomesticStockPriceMonitor`: optional periodic quote polling, disabled unless configured
+- Optional HikariCP/MySQL persistence for scheduled successful quote history
+
+## Dashboard (React + Spring WebFlux)
+
+The optional `dashboard-api` application provides a responsive React/Vite dashboard. It includes Google/GitHub OAuth login, masked credential status and replacement forms, domestic stock master search, a JPA-backed watchlist that updates the one-minute quote monitor, and daily/weekly/monthly/quarterly/yearly price history charts. The dashboard uses the same MySQL database and KIS credentials as the library.
+
+Configure MySQL plus OAuth client values in the environment before starting the API:
+
+```powershell
+$env:KIS_DB_URL = 'jdbc:mysql://localhost:3306/kis_service?serverTimezone=Asia/Seoul&characterEncoding=UTF-8'
+$env:KIS_DB_USERNAME = 'kis_service'
+$env:KIS_DB_PASSWORD = '...'
+$env:GOOGLE_CLIENT_ID = '...'
+$env:GOOGLE_CLIENT_SECRET = '...'
+$env:GITHUB_CLIENT_ID = '...'
+$env:GITHUB_CLIENT_SECRET = '...'
+```
+
+Start the API and frontend in separate terminals:
+
+```powershell
+./gradlew.bat :dashboard-api:bootRun
+cd dashboard-ui
+pnpm install
+pnpm dev
+```
+
+Open `http://localhost:5173`. Register OAuth callback URLs as `http://localhost:5173/login/oauth2/code/google` and `http://localhost:5173/login/oauth2/code/github` for local Vite use. Set `KIS_GOOGLE_REDIRECT_URI` and `KIS_GITHUB_REDIRECT_URI` when deploying behind a different public URL. Do not commit provider secrets. The API stores KIS app credentials in `kis_api_credential`, and the watchlist in `kis_dashboard_watch`; scheduled quotes continue to use the existing `kis_stock_price_history` table.
+
+The UI E2E suite mocks OAuth sessions, the stock master, credentials and trend responses; it does not call KIS or a provider account:
+
+```powershell
+cd dashboard-ui
+pnpm install
+pnpm exec playwright install chromium
+pnpm test:e2e
+```
+
+Backend dashboard controller tests run with `./gradlew.bat :dashboard-api:test`; all library unit tests run with `./gradlew.bat test`.
 
 Responses preserve KIS's `output`, `output1`, and `output2` JSON as `JsonNode` because fields vary by API. Non-zero KIS `rt_cd` responses are raised as `KisApiException`.
 
