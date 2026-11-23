@@ -172,17 +172,15 @@ The Gradle runtime includes MySQL Connector/J 26.10.0, the current GA driver at 
 
 The optional `dashboard-api` application provides a responsive React/Vite dashboard. It includes Google/GitHub OAuth login, masked credential status and replacement forms, domestic stock master search, a JPA-backed watchlist that updates the one-minute quote monitor, and daily/weekly/monthly/quarterly/yearly price history charts. The dashboard uses the same MySQL database and KIS credentials as the library.
 
-Configure MySQL plus OAuth client values in the environment before starting the API:
+The MySQL URL/username/password and the Google/GitHub OAuth client IDs and secrets are stored encrypted with [Jasypt](https://github.com/ulisesbocchio/jasypt-spring-boot) as `ENC(...)` values in `dashboard-api/src/main/resources/application.yml`. Only the Jasypt master password is needed at runtime:
 
 ```powershell
-$env:KIS_DB_URL = 'jdbc:mysql://localhost:3306/kis_service?serverTimezone=Asia/Seoul&characterEncoding=UTF-8'
-$env:KIS_DB_USERNAME = 'kis_service'
-$env:KIS_DB_PASSWORD = '...'
-$env:GOOGLE_CLIENT_ID = '...'
-$env:GOOGLE_CLIENT_SECRET = '...'
-$env:GITHUB_CLIENT_ID = '...'
-$env:GITHUB_CLIENT_SECRET = '...'
+$env:JASYPT_ENCRYPTOR_PASSWORD = '...'
 ```
+
+Keep this password out of source control; without it the application cannot start. The values use `PBEWITHHMACSHA512ANDAES_256` with 100,000 key-obtention iterations, random salt/IV, and base64 output. To change a value, encrypt it with a `StandardPBEStringEncryptor` configured the same way (see `EncryptedApplicationPropertiesTest`) and replace the matching `ENC(...)` entry. To verify that the committed values decrypt, run `./gradlew.bat :dashboard-api:test` with `JASYPT_ENCRYPTOR_PASSWORD` set; `EncryptedApplicationPropertiesTest` and `OAuthConfigurationIntegrationTest` are skipped when it is absent.
+
+Account numbers are not encrypted. Provide them with an optional `application-kis.yml` on the dashboard classpath (it is imported if present; copy the `kis.openapi` block from `application-kis-example.yml`), or with Spring's standard environment variables such as `KIS_OPENAPI_ENVIRONMENT`, `KIS_OPENAPI_PAPER_ACCOUNTNUMBER`, and `KIS_OPENAPI_PAPER_ACCOUNTPRODUCTCODE`.
 
 Start the API and frontend in separate terminals:
 
