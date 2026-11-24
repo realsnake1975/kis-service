@@ -49,6 +49,19 @@ class DailyOrderQueryTest {
     }
 
     @Test
+    void readsContinuationKeysFromTheTopLevelOfTheBody() {
+        KisApiResponse apiResponse = jsonMapper.readValue("""
+                {"rt_cd":"0","output1":[],"output2":{},"ctx_area_fk100":"FKEY  ","ctx_area_nk100":"NKEY  "}
+                """, KisApiResponse.class);
+        DailyOrderQuery query = DailyOrderQuery.all(LocalDate.of(2026, 1, 2), LocalDate.of(2026, 1, 5));
+
+        DailyOrderQuery next = query.nextPage(new KisApiPage(apiResponse, "M"));
+
+        assertEquals("FKEY", next.continuationSearchKey());
+        assertEquals("NKEY", next.continuationKey());
+    }
+
+    @Test
     void rejectsNextPageWhenKisReportsNoMoreRows() {
         KisApiResponse apiResponse = new KisApiResponse("0", "0", "ok", null, null, null);
         DailyOrderQuery query = DailyOrderQuery.all(LocalDate.of(2026, 1, 2), LocalDate.of(2026, 1, 5));

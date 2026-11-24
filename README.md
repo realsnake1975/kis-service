@@ -152,7 +152,7 @@ The Gradle runtime includes MySQL Connector/J 26.10.0, the current GA driver at 
 
 - `getPrice(symbol)`: domestic stock quote (`FHKST01010100`)
 - `placeCashOrder(request)`: domestic cash buy/sell, market or limit
-- `getBalance()`: domestic stock balance
+- `getBalance()`: domestic stock balance, following continuation pages (up to 10) and merging holdings; `getBalancePage(...)` fetches a single page
 - `amendOrCancelOrder(request)`: amend (`01`) or cancel (`02`) an existing domestic cash order
 - `getDailyOrders(query)`: daily order/fill history with explicit continuation page support
 - `DomesticStockMasterClient.getAll()`: all KOSPI/KOSDAQ master entries
