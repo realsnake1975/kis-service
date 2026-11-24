@@ -44,4 +44,36 @@ class KisCredentialProviderTest {
         assertEquals("KisApiCredentials[appKey=****, appSecret=****]",
                 new KisApiCredentials("key", "secret").toString());
     }
+
+    @Test
+    void contextAccountWinsOverSourcesAndSourcesWinOverProperties() {
+        KisProperties properties = new KisProperties();
+        properties.getReal().setAppKey("cfg-key");
+        properties.getReal().setAppSecret("cfg-secret");
+        KisAccount owner = new KisAccount("owner-key", "owner-secret", "11112222", "01");
+        KisAccount user = new KisAccount("user-key", "user-secret", "33334444", "01");
+        KisAccountSource emptySource = environment -> java.util.Optional.empty();
+        KisAccountSource ownerSource = environment -> java.util.Optional.of(owner);
+
+        KisCredentialProvider withSource = new KisCredentialProvider(properties, java.util.List.of(emptySource, ownerSource));
+        KisCredentialProvider withoutSource = new KisCredentialProvider(properties);
+
+        assertEquals(user, withSource.resolve(KisAccountContext.with(user), KisEnvironment.REAL));
+        assertEquals(owner, withSource.resolve(reactor.util.context.Context.empty(), KisEnvironment.REAL));
+        assertEquals("cfg-key", withoutSource.resolve(reactor.util.context.Context.empty(), KisEnvironment.REAL).appKey());
+    }
+
+    @Test
+    void sourceWithoutCredentialsFallsBackToProperties() {
+        KisProperties properties = new KisProperties();
+        KisCredentialProvider provider = new KisCredentialProvider(properties,
+                java.util.List.of(environment -> java.util.Optional.of(new KisAccount("", "", "", null))));
+        assertFalse(provider.isConfigured(KisEnvironment.REAL));
+    }
+
+    @Test
+    void accountDoesNotExposeSecretsInToString() {
+        assertEquals("KisAccount[appKey=****, appSecret=****, accountNumber=****, accountProductCode=01]",
+                new KisAccount("key", "secret", "12345678", null).toString());
+    }
 }

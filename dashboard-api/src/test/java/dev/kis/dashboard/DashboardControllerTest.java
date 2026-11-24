@@ -1,8 +1,5 @@
 package dev.kis.dashboard;
 
-import dev.kis.openapi.KisEnvironment;
-import dev.kis.openapi.KisProperties;
-import dev.kis.openapi.auth.KisCredentialProvider;
 import dev.kis.openapi.domestic.DomesticStock;
 import dev.kis.openapi.domestic.DomesticStockPriceRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,12 +24,6 @@ class DashboardControllerTest {
 
     @BeforeEach
     void setUp() {
-        KisProperties properties = new KisProperties();
-        properties.setEnvironment(KisEnvironment.REAL);
-        properties.getReal().setAppKey("PSabcdefghijwxyz");
-        properties.getReal().setAppSecret("real-secret");
-        properties.getReal().setAccountNumber("12345678");
-        KisCredentialProvider credentials = new KisCredentialProvider(properties);
         DomesticStockSearchService stocks = query -> {
             searchedQuery.set(query);
             return Mono.just(List.of(new DomesticStock("005930", "KR7005930003", "삼성전자", DomesticStock.Market.KOSPI)));
@@ -55,26 +46,7 @@ class DashboardControllerTest {
             default -> throw new UnsupportedOperationException(method);
         });
         PriceSchedule schedule = appliedSchedule::set;
-        controller = new DashboardController(credentials, properties, stocks, history, watchRepository, schedule);
-    }
-
-    @Test
-    void missingCredentialsAreReportedAsUnconfigured() {
-        var result = controller.getCredentials(KisEnvironment.PAPER).block();
-        assertFalse(result.configured());
-        assertEquals("PAPER", result.environment());
-        assertEquals("", result.appKey());
-        assertFalse(result.active());
-    }
-
-    @Test
-    void configuredCredentialsAreReportedMaskedWithoutTheSecret() {
-        var result = controller.getCredentials(KisEnvironment.REAL).block();
-        assertTrue(result.configured());
-        assertTrue(result.active());
-        assertEquals("PSab••••wxyz", result.appKey());
-        assertEquals("••••5678", result.accountNumber());
-        assertFalse(result.toString().contains("real-secret"));
+        controller = new DashboardController(stocks, history, watchRepository, schedule);
     }
 
     @Test

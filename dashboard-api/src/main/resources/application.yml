@@ -3,11 +3,6 @@ server:
 kis:
   openapi:
     environment: ${KIS_ENVIRONMENT:REAL}
-    real:
-      app-key: ENC(D0+w7H+97YRdxiJbARuCwJ1qTd/qhU8WJ7qwCzM2rcW3hetaR1AHNByjsnDGrKQKmwKeFzn3KFsMdWJPA4yB8hL+hFuZrmfb6SRrZKcRMNE=)
-      app-secret: ENC(OaPE3LqmGhwqk1/vuhx/32dEG2KeFuORMxYJVxq/JYjMX81adQKYeGdf7aIIBDLxTzq28c7JsiKTOdRvbjA04If+GEC+2dZIpKVoqyfejv8FiCOFBf70aUhSpxnavk0mnY6Oj3v4nLYmGVcn05OpnnM7Oq2F5ZXt5jq4C85mGAONLCckmWIeKYH7p5THcfUo2rH1ehdS7ElO8bnqL4sf8drUieqY91idtskkchnPDiQ3k5OR1tJxHNC7U5uB+ssSRK7306f2Zb7eX4KZe3Wf/8VyiDmG6i/BEzBC5l1RB4s=)
-      account-number: ENC(U9c4Y/ptwcUlpM2135jDXoByxSa776Bzqe+nIFsFlDTA4+BHORjmZGNJsxztP2H1)
-      account-product-code: '01'
     domestic-stock-monitor:
       enabled: true
       interval: 1m

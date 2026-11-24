@@ -28,6 +28,8 @@ $env:KIS_PAPER_ACCOUNT_PRODUCT_CODE = '01'
 
 Never commit a plain app key or secret. Either supply them through the environment as above, or store them in the config file as Jasypt `ENC(...)` values (see the dashboard section). For real trading, set the `kis.openapi.real.*` values and `KIS_ENVIRONMENT=REAL`.
 
+To serve several accounts from one application, put the account into the Reactor context for each call instead of configuring it: `client.getBalance().contextWrite(KisAccountContext.with(new KisAccount(appKey, appSecret, accountNumber, "01")))`. Access tokens are cached per environment and app key. Calls without a context account use the first `KisAccountSource` bean that returns one, then the `kis.openapi.<environment>.*` properties.
+
 ## Use from a Spring application
 
 Add this project as a Gradle dependency after publishing it locally, then inject `DomesticStockClient`:
@@ -162,9 +164,9 @@ The Gradle runtime includes MySQL Connector/J 26.10.0, the current GA driver at 
 
 ## Dashboard (React + Spring WebFlux)
 
-The optional `dashboard-api` application provides a responsive React/Vite dashboard. It includes Google/GitHub OAuth login, a read-only masked status of the configured KIS credentials, domestic stock master search, a JPA-backed watchlist that updates the one-minute quote monitor, and daily/weekly/monthly/quarterly/yearly price history charts. The dashboard does not place orders.
+The optional `dashboard-api` application provides a responsive React/Vite dashboard. It includes Google/GitHub OAuth login, per-user KIS credential registration, a read-only 내 계좌 (balance and holdings) view, domestic stock master search, a JPA-backed watchlist that updates the one-minute quote monitor, and daily/weekly/monthly/quarterly/yearly price history charts. The dashboard does not place orders.
 
-The KIS `REAL` app key, app secret and account number, the MySQL URL/username/password, and the Google/GitHub OAuth client IDs and secrets are stored encrypted with [Jasypt](https://github.com/ulisesbocchio/jasypt-spring-boot) as `ENC(...)` values in `dashboard-api/src/main/resources/application.yml`. Only the Jasypt master password is needed at runtime:
+The MySQL URL/username/password and the Google/GitHub OAuth client IDs and secrets are stored encrypted with [Jasypt](https://github.com/ulisesbocchio/jasypt-spring-boot) as `ENC(...)` values in `dashboard-api/src/main/resources/application.yml`. Only the Jasypt master password is needed at runtime:
 
 ```powershell
 $env:JASYPT_ENCRYPTOR_PASSWORD = '...'
@@ -172,7 +174,11 @@ $env:JASYPT_ENCRYPTOR_PASSWORD = '...'
 
 Keep this password out of source control; without it the application cannot start. The values use `PBEWITHHMACSHA512ANDAES_256` with 100,000 key-obtention iterations, random salt/IV, and base64 output. To change a value, encrypt it with a `StandardPBEStringEncryptor` configured the same way (see `EncryptedApplicationPropertiesTest`) and replace the matching `ENC(...)` entry. To verify that the committed values decrypt, run `./gradlew.bat :dashboard-api:test` with `JASYPT_ENCRYPTOR_PASSWORD` set; `EncryptedApplicationPropertiesTest` and `OAuthConfigurationIntegrationTest` are skipped when it is absent.
 
-The dashboard runs against `REAL` by default (`kis.openapi.environment: ${KIS_ENVIRONMENT:REAL}`), because only REAL credentials are configured there. To use a PAPER account instead, add encrypted `kis.openapi.paper.app-key` / `app-secret` / `account-number` entries and set `KIS_ENVIRONMENT=PAPER`. Changing a credential means re-encrypting it, replacing the `ENC(...)` value, and restarting the API; the dashboard cannot edit credentials.
+KIS app keys, app secrets and account numbers are **not** in the configuration. Each signed-in user registers their own in **API 설정**. They are stored in `kis_user_credential` and keyed by the OAuth identity, for example `github:<user id>`. The app key, secret and account number columns are encrypted with the same Jasypt master password and algorithm (`EncryptedStringConverter`). Secrets are write-only: the API returns only masked values. A user who has not registered credentials sees no account data. Other users' accounts are never used for their requests.
+
+Calls made without a user, such as the background price monitor, use the first user who registered credentials for the active environment (`KisUserAccounts` as a `KisAccountSource`). The dashboard runs against `REAL` by default (`kis.openapi.environment: ${KIS_ENVIRONMENT:REAL}`). Set `KIS_ENVIRONMENT=PAPER` to use PAPER credentials instead.
+
+To move credentials that are still in `kis.openapi.<environment>.*` configuration into the database for one user, start the API once with `--kis.dashboard.import-credentials-for=github:<user id>`. Existing rows are kept. After that, remove the values from the configuration.
 
 Start the API and frontend in separate terminals:
 
@@ -185,7 +191,7 @@ pnpm dev
 
 Open `http://localhost:5173`. Register OAuth callback URLs as `http://localhost:5173/login/oauth2/code/google` and `http://localhost:5173/login/oauth2/code/github` for local Vite use. Set `KIS_GOOGLE_REDIRECT_URI` and `KIS_GITHUB_REDIRECT_URI` when deploying behind a different public URL. Do not commit plain provider or KIS secrets. The API stores the watchlist in `kis_dashboard_watch`; scheduled quotes use the `kis_stock_price_history` table.
 
-The UI E2E suite mocks OAuth sessions, the stock master, credentials and trend responses; it does not call KIS or a provider account:
+The UI E2E suite mocks OAuth sessions, the stock master, credentials, balance and trend responses; it does not call KIS or a provider account:
 
 ```powershell
 cd dashboard-ui

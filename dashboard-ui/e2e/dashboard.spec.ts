@@ -11,8 +11,8 @@ test.beforeEach(async ({ page }) => {
     return route.fulfill({ json: body.codes.map(code => catalog.find(stock => stock.code === code)).filter(Boolean) })
   })
   await page.route('**/api/stocks/*/trend?**', route => route.fulfill({ json: [{ time: '2026-11-15T09:00:00Z', price: 76800 }, { time: '2026-11-15T10:00:00Z', price: 77200 }] }))
-  await page.route('**/api/admin/credentials/PAPER', route => route.fulfill({ json: { environment: 'PAPER', configured: false, appKey: '', accountNumber: '', active: false } }))
-  await page.route('**/api/admin/credentials/REAL', route => route.fulfill({ json: { environment: 'REAL', configured: true, appKey: 'PSab••••wxyz', accountNumber: '••••5678', active: true } }))
+  await page.route('**/api/admin/credentials/PAPER', route => route.fulfill({ json: { environment: 'PAPER', configured: false, appKey: '', accountNumber: '', accountProductCode: '', active: false } }))
+  await page.route('**/api/admin/credentials/REAL', route => route.fulfill({ json: { environment: 'REAL', configured: true, appKey: 'PSab••••wxyz', accountNumber: '••••5678', accountProductCode: '01', active: true } }))
 })
 
 test('대시보드에서 종목을 검색하고 관심 목록에 추가한다', async ({ page }) => {
@@ -32,14 +32,16 @@ test('대시보드에서 종목을 검색하고 관심 목록에 추가한다', 
   await trendResponse
 })
 
-test('설정 파일의 API 인증 정보 상태를 읽기 전용으로 보여준다', async ({ page }) => {
+test('내 계정의 API 인증 정보 상태를 시크릿 없이 보여준다', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: 'API 설정' }).click()
   await expect(page.getByRole('heading', { name: 'KIS API 인증 정보' })).toBeVisible()
   await expect(page.getByTestId('credential-REAL')).toContainText('사용 중')
   await expect(page.getByTestId('credential-REAL')).toContainText('등록됨 · App Key PSab••••wxyz · 계좌 ••••5678')
   await expect(page.getByTestId('credential-PAPER')).toContainText('설정되지 않음')
-  await expect(page.getByLabel('App Secret')).toHaveCount(0)
+  await expect(page.getByLabel('App Secret')).toHaveAttribute('type', 'password')
+  await expect(page.getByLabel('App Secret')).toHaveValue('')
+  await expect(page.getByText('real-secret')).toHaveCount(0)
   await expect(page.getByText('REAL 모드')).toBeVisible()
   await expect(page.getByText('PRICE OVERVIEW')).toHaveCount(0)
 })
@@ -95,4 +97,38 @@ test('계좌 조회에 실패하면 이유를 보여준다', async ({ page }) =>
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await page.getByRole('button', { name: '내 계좌' }).click()
   await expect(page.getByRole('alert')).toContainText('잔고 조회에 실패')
+})
+
+test('API 설정에서 내 KIS 인증 정보를 등록한다', async ({ page }) => {
+  let saved: { body: Record<string, string>; csrf?: string } | undefined
+  let registered = false
+  await page.route('**/api/admin/credentials/REAL', route => {
+    if (route.request().method() === 'PUT') {
+      saved = { body: route.request().postDataJSON(), csrf: route.request().headers()['x-xsrf-token'] }
+      registered = true
+    }
+    return route.fulfill({ json: registered
+      ? { environment: 'REAL', configured: true, appKey: 'PSne••••0001', accountNumber: '••••4321', accountProductCode: '01', active: true }
+      : { environment: 'REAL', configured: false, appKey: '', accountNumber: '', accountProductCode: '', active: true } })
+  })
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: 'API 설정' }).click()
+  await expect(page.getByTestId('credential-REAL')).toContainText('설정되지 않음')
+  const submit = page.getByRole('button', { name: '등록' })
+  await page.getByLabel('App Key').fill('PSnewappkey0001')
+  await expect(submit).toBeDisabled()
+  await page.getByLabel('App Secret').fill('new-secret')
+  await page.getByLabel('계좌번호 (앞 8자리)').fill('8765-4321')
+  await submit.click()
+  await expect(page.getByTestId('credential-REAL')).toContainText('등록됨 · App Key PSne••••0001 · 계좌 ••••4321')
+  expect(saved?.csrf).toBe('test-csrf-token')
+  expect(saved?.body).toEqual({ appKey: 'PSnewappkey0001', appSecret: 'new-secret', accountNumber: '8765-4321', accountProductCode: '01' })
+  await expect(page.getByLabel('App Secret')).toHaveValue('')
+})
+
+test('KIS 정보를 등록하지 않은 사용자에게 내 계좌 탭이 등록을 안내한다', async ({ page }) => {
+  await page.route('**/api/account/balance', route => route.fulfill({ status: 404, json: { status: 404 } }))
+  await page.goto('/', { waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: '내 계좌' }).click()
+  await expect(page.getByRole('alert')).toContainText('API 설정에서 앱키와 계좌를 등록')
 })
