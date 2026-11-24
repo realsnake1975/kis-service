@@ -7,6 +7,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
@@ -39,5 +42,27 @@ class OAuthConfigurationIntegrationTest {
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", location ->
                         assertTrue(location.startsWith("https://github.com/login/oauth/authorize")));
+    }
+
+    @Test
+    void logoutReturnsOkInsteadOfRedirectingForTheSpa() {
+        var csrf = webClient.get().uri("/api/session/csrf").exchange()
+                .expectStatus().isOk()
+                .returnResult(Map.class);
+        var cookie = csrf.getResponseCookies().getFirst("XSRF-TOKEN");
+        assertNotNull(cookie);
+        Map<?, ?> body = csrf.getResponseBody().blockFirst();
+        assertNotNull(body);
+
+        webClient.post().uri("/logout")
+                .cookie("XSRF-TOKEN", cookie.getValue())
+                .header((String) body.get("headerName"), (String) body.get("token"))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void logoutWithoutCsrfTokenIsRejected() {
+        webClient.post().uri("/logout").exchange().expectStatus().isForbidden();
     }
 }

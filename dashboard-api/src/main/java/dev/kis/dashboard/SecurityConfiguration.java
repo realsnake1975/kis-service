@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.authentication.logout.HttpStatusReturningServerLogoutSuccessHandler;
 import org.springframework.security.web.server.csrf.CookieServerCsrfTokenRepository;
 
 @Configuration
@@ -18,7 +19,7 @@ public class SecurityConfiguration {
                         .pathMatchers("/oauth2/**", "/login/**").permitAll()
                         .anyExchange().authenticated())
                 .oauth2Login(Customizer.withDefaults())
-                .logout(Customizer.withDefaults())
+                .logout(logout -> logout.logoutSuccessHandler(new HttpStatusReturningServerLogoutSuccessHandler()))
                 .build();
     }
 }

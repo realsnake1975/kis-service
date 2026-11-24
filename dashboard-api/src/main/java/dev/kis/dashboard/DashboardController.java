@@ -122,7 +122,7 @@ public class DashboardController {
     }
 
     private String mask(String value) { return value == null || value.length() < 8 ? "••••••••" : value.substring(0, 4) + "••••" + value.substring(value.length() - 4); }
-    private String maskAccount(String value) { return value == null || value.isBlank() ? "" : value.strip().length() <= 4 ? "••••" : "••••" + value.strip().substring(value.strip().length() - 4); }
+    static String maskAccount(String value) { return value == null || value.isBlank() ? "" : value.strip().length() <= 4 ? "••••" : "••••" + value.strip().substring(value.strip().length() - 4); }
     public record CredentialStatus(String environment, boolean configured, String appKey, String accountNumber, boolean active) { }
     public record TrendPoint(Instant time, java.math.BigDecimal price) { }
     public record ScheduleRequest(List<String> codes) { }
