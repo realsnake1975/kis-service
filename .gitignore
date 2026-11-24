@@ -9,3 +9,4 @@ dashboard-ui/test-results/
 dashboard-ui/playwright-report/
 dashboard-ui/.playwright-browsers/
 dashboard-ui/tsconfig.tsbuildinfo
+logs/

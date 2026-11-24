@@ -191,6 +191,8 @@ pnpm dev
 
 Open `http://localhost:5173`. Register OAuth callback URLs as `http://localhost:5173/login/oauth2/code/google` and `http://localhost:5173/login/oauth2/code/github` for local Vite use. Set `KIS_GOOGLE_REDIRECT_URI` and `KIS_GITHUB_REDIRECT_URI` when deploying behind a different public URL. Do not commit plain provider or KIS secrets. The API stores the watchlist in `kis_dashboard_watch`; scheduled quotes use the `kis_stock_price_history` table.
 
+Logs go to the console and to `logs/dashboard-api.log`, relative to the working directory (`dashboard-api/logs/` with `bootRun`). Set `KIS_LOG_FILE` to change the path. Files roll daily and at 10 MB, and are kept for 14 days. Every request except static assets gets one access-log line from the `dev.kis.dashboard.access` logger, for example `GET /api/account/balance 200 142ms user=github:123`. Requests that security redirects or rejects are included. Only the path is logged, never the query string, so OAuth callback codes stay out of the logs.
+
 The UI E2E suite mocks OAuth sessions, the stock master, credentials, balance and trend responses; it does not call KIS or a provider account:
 
 ```powershell

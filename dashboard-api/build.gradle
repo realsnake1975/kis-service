@@ -20,4 +20,8 @@ dependencies {
 
 tasks.named('bootJar') { enabled = true }
 tasks.named('jar') { enabled = false }
-tasks.withType(Test).configureEach { useJUnitPlatform() }
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    // Keep test runs out of the development log file (logging.file.name in application.yml).
+    systemProperty 'logging.file.name', ''
+}
