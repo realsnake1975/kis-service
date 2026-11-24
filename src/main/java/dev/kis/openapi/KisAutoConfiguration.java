@@ -29,7 +29,7 @@ public class KisAutoConfiguration {
     CacheManager kisCacheManager() {
         CaffeineCacheManager manager = new CaffeineCacheManager("kisAccessTokens");
         manager.setCaffeine(Caffeine.newBuilder()
-                .maximumSize(4)
+                .maximumSize(256)
                 .expireAfterWrite(Duration.ofHours(23)));
         return manager;
     }

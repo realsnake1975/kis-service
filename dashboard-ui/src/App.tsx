@@ -4,7 +4,7 @@ import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YA
 
 type Stock = { code: string; name: string; market: string; price?: number }
 type Point = { time: string; price: number }
-type CredentialStatus = { environment: string; configured: boolean; appKey: string; accountNumber: string; active: boolean }
+type CredentialStatus = { environment: string; configured: boolean; appKey: string; accountNumber: string; accountProductCode: string; active: boolean }
 type Tab = '대시보드' | '내 계좌' | '종목 탐색' | '가격 추이' | 'API 설정'
 type Holding = { code: string; name: string; quantity: number; averagePrice: number | null; currentPrice: number | null; purchaseAmount: number | null; evaluationAmount: number | null; profitLoss: number | null; profitRate: number | null }
 type AccountBalance = { environment: string; accountNumber: string; totalEvaluation: number | null; netAsset: number | null; deposit: number | null; settlementDeposit: number | null; purchaseAmount: number | null; evaluationAmount: number | null; profitLoss: number | null; profitRate: number | null; holdings: Holding[]; fetchedAt: string }
@@ -15,7 +15,7 @@ const tabDescriptions: Record<Tab, string> = {
   '내 계좌': '한국투자증권 계좌의 보유 종목과 평가 손익을 조회합니다. 조회 전용이며 주문은 하지 않습니다.',
   '종목 탐색': '한국투자 종목 마스터에서 종목을 찾아 모니터링 목록에 추가하세요.',
   '가격 추이': '모니터링 중인 종목의 수집된 가격 이력을 기간별로 확인하세요.',
-  'API 설정': '서버 설정 파일에 등록된 KIS API 인증 정보 상태를 확인하세요.',
+  'API 설정': '내 계정에 연결할 한국투자증권 Open API 앱키와 계좌를 등록하세요.',
 }
 
 async function csrfHeaders(): Promise<Record<string, string>> {
@@ -52,13 +52,11 @@ export default function App() {
     const timer = window.setInterval(refreshSchedule, 60_000)
     return () => { active = false; window.clearInterval(timer) }
   }, [loggedIn])
-  useEffect(() => {
-    if (!loggedIn) return
-    Promise.all(['PAPER', 'REAL'].map(env => fetch(`/api/admin/credentials/${env}`)
-      .then(r => r.ok ? r.json() as Promise<CredentialStatus> : null)
-      .catch(() => null)))
-      .then(rows => setCredentials(rows.filter((row): row is CredentialStatus => row !== null)))
-  }, [loggedIn])
+  const loadCredentials = () => Promise.all(['PAPER', 'REAL'].map(env => fetch(`/api/admin/credentials/${env}`)
+    .then(r => r.ok ? r.json() as Promise<CredentialStatus> : null)
+    .catch(() => null)))
+    .then(rows => setCredentials(rows.filter((row): row is CredentialStatus => row !== null)))
+  useEffect(() => { if (loggedIn) void loadCredentials() }, [loggedIn])
   const selectedStockCode = selectedStock?.code
   useEffect(() => {
     if (!loggedIn || !selectedStockCode) { setChartPoints([]); return }
@@ -118,7 +116,7 @@ export default function App() {
 
       {tab === '가격 추이' && <div className="tab-grid">{scheduled.length ? chart : <section className="panel"><div className="chart-empty">모니터링 중인 종목이 없어요. 종목 탐색에서 종목을 추가하세요.</div></section>}</div>}
 
-      {tab === 'API 설정' && <section className="panel credential-panel tab-grid"><div className="panel-head"><div><div className="panel-kicker">CONNECTION</div><h3>KIS API 인증 정보</h3></div><span className="source-pill"><KeyRound size={13}/> 암호화된 설정 파일</span></div><p className="panel-description">앱키·시크릿·계좌번호는 서버 설정 파일(application.yml)에 Jasypt로 암호화되어 저장됩니다. 변경하려면 설정 파일의 값을 다시 암호화해 교체한 뒤 서버를 재시작하세요. 시크릿은 화면에 표시하지 않습니다.</p>{credentials.map(c => <div className="credential-status" key={c.environment} data-testid={`credential-${c.environment}`}><span className={c.configured ? 'configured-dot' : 'unconfigured-dot'}/>{c.environment === 'REAL' ? '실전투자 (REAL)' : '모의투자 (PAPER)'}{c.active ? ' · 사용 중' : ''} — {c.configured ? `등록됨 · App Key ${c.appKey}${c.accountNumber ? ` · 계좌 ${c.accountNumber}` : ''}` : '설정되지 않음'}</div>)}<p className="panel-description">현재 사용 환경: {environment} 모드</p></section>}
+      {tab === 'API 설정' && <CredentialPanel credentials={credentials} onChanged={loadCredentials} notify={notify}/>}
 
       <footer className="footer"><span>© {new Date().getFullYear()} Marketdesk</span><span>한국투자증권 Open API · {environment} 환경</span><span><i/> 서버 설정에 따라 데이터가 표시됩니다</span></footer></div></main>{message && <div className="toast" role="status">{message}</div>}</div>
 }
@@ -126,6 +124,56 @@ export default function App() {
 const won = (value: number | null | undefined) => value == null ? '—' : `${Math.round(value).toLocaleString('ko-KR')}원`
 const signed = (value: number | null | undefined, suffix: string) => value == null ? '—' : `${value > 0 ? '+' : ''}${suffix === '%' ? value.toFixed(2) : Math.round(value).toLocaleString('ko-KR')}${suffix}`
 const tone = (value: number | null | undefined) => value == null || value === 0 ? '' : value > 0 ? 'gain' : 'loss'
+
+function CredentialPanel({ credentials, onChanged, notify }: { credentials: CredentialStatus[]; onChanged: () => Promise<void>; notify: (text: string) => void }) {
+  const activeEnv = credentials.find(c => c.active)?.environment ?? 'REAL'
+  const [env, setEnv] = useState<string | null>(null)
+  const target = env ?? activeEnv
+  const current = credentials.find(c => c.environment === target)
+  const [appKey, setAppKey] = useState('')
+  const [appSecret, setAppSecret] = useState('')
+  const [accountNumber, setAccountNumber] = useState('')
+  const [productCode, setProductCode] = useState('01')
+  const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [error, setError] = useState('')
+  const reset = () => { setAppKey(''); setAppSecret(''); setAccountNumber(''); setProductCode(current?.accountProductCode || '01'); setError(''); setConfirmDelete(false) }
+  useEffect(reset, [target, current?.configured])
+  const send = async (method: 'PUT' | 'DELETE') => {
+    setSaving(true); setError('')
+    try {
+      const headers = await csrfHeaders()
+      const response = await fetch(`/api/admin/credentials/${target}`, method === 'PUT'
+        ? { method, headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ appKey, appSecret, accountNumber, accountProductCode: productCode }) }
+        : { method, headers })
+      if (response.ok) {
+        await onChanged(); reset()
+        notify(method === 'PUT' ? 'KIS 인증 정보를 암호화해 저장했어요.' : 'KIS 인증 정보를 삭제했어요.')
+      } else {
+        const body = await response.json().catch(() => null) as { message?: string } | null
+        setError(response.status === 400 ? (body?.message || '입력값을 확인해 주세요.') : '저장하지 못했어요. 로그인 상태를 확인해 주세요.')
+      }
+    } catch { setError('API 서버에 연결할 수 없어요.') }
+    setSaving(false)
+  }
+  const needsSecret = !current?.configured
+  const canSave = appKey.trim() !== '' && /^\d{8}$/.test(accountNumber.replace(/-/g, '').trim()) && (!needsSecret || appSecret.trim() !== '')
+  return <section className="panel credential-panel tab-grid"><div className="panel-head"><div><div className="panel-kicker">CONNECTION</div><h3>KIS API 인증 정보</h3></div><span className="source-pill"><KeyRound size={13}/> 내 계정 전용 · 암호화 저장</span></div>
+    <p className="panel-description">앱키·시크릿·계좌번호는 로그인한 내 계정에만 연결되어 DB에 암호화 저장됩니다. 다른 사용자는 내 정보를 볼 수 없고, 시크릿은 저장 후 다시 표시하지 않습니다.</p>
+    {credentials.map(c => <div className="credential-status" key={c.environment} data-testid={`credential-${c.environment}`}><span className={c.configured ? 'configured-dot' : 'unconfigured-dot'}/>{c.environment === 'REAL' ? '실전투자 (REAL)' : '모의투자 (PAPER)'}{c.active ? ' · 사용 중' : ''} — {c.configured ? `등록됨 · App Key ${c.appKey}${c.accountNumber ? ` · 계좌 ${c.accountNumber}` : ''}` : '설정되지 않음'}</div>)}
+    <p className="panel-description">현재 사용 환경: {activeEnv} 모드</p>
+    <form className="credential-form" onSubmit={e => { e.preventDefault(); if (canSave) void send('PUT') }}>
+      <label>환경<select value={target} onChange={e => setEnv(e.target.value)}><option value="REAL">실전투자 (REAL)</option><option value="PAPER">모의투자 (PAPER)</option></select></label>
+      <label>App Key<input value={appKey} onChange={e => setAppKey(e.target.value)} autoComplete="off" spellCheck={false} placeholder={current?.configured ? `현재 ${current.appKey}` : 'PS로 시작하는 앱키'}/></label>
+      <label>App Secret<input type="password" value={appSecret} onChange={e => setAppSecret(e.target.value)} autoComplete="new-password" placeholder={current?.configured ? '변경할 때만 입력' : '앱 시크릿'}/></label>
+      <div className="form-row"><label>계좌번호 (앞 8자리)<input value={accountNumber} onChange={e => setAccountNumber(e.target.value)} inputMode="numeric" autoComplete="off" placeholder={current?.configured ? `현재 ${current.accountNumber}` : '12345678'}/></label><label>상품코드<input value={productCode} onChange={e => setProductCode(e.target.value)} inputMode="numeric" maxLength={2}/></label></div>
+      {current?.configured && <p className="form-hint">수정할 때도 App Key와 계좌번호는 다시 입력해야 해요. 화면에는 가린 값만 보여주기 때문이에요.</p>}
+      {error && <div className="account-error" role="alert">{error}</div>}
+      <div className="form-actions"><button type="submit" className="primary-button" disabled={!canSave || saving}>{saving ? '저장 중' : current?.configured ? '변경 저장' : '등록'}</button>
+        {current?.configured && <button type="button" className="outline-button danger" disabled={saving} onClick={() => confirmDelete ? void send('DELETE') : setConfirmDelete(true)}>{confirmDelete ? '한 번 더 누르면 삭제' : '삭제'}</button>}</div>
+    </form>
+  </section>
+}
 
 function AccountView() {
   const [balance, setBalance] = useState<AccountBalance | null>(null)
@@ -136,7 +184,8 @@ function AccountView() {
     try {
       const response = await fetch('/api/account/balance')
       if (response.ok) setBalance(await response.json())
-      else setError(response.status === 503 ? '서버 설정에 계좌번호가 없어요. API 설정을 확인해 주세요.'
+      else setError(response.status === 404 ? '등록된 KIS 계좌 정보가 없어요. API 설정에서 앱키와 계좌를 등록해 주세요.'
+        : response.status === 503 ? '등록된 KIS 계좌 정보가 올바르지 않아요. API 설정을 확인해 주세요.'
         : response.status === 502 ? '한국투자증권 잔고 조회에 실패했어요. 잠시 후 다시 시도해 주세요.'
         : '계좌 정보를 불러오지 못했어요. 로그인 상태를 확인해 주세요.')
     } catch { setError('API 서버에 연결할 수 없어요.') }

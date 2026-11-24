@@ -1,9 +1,5 @@
 package dev.kis.dashboard;
 
-import dev.kis.openapi.KisEnvironment;
-import dev.kis.openapi.KisProperties;
-import dev.kis.openapi.auth.KisCredentialProvider;
-import dev.kis.openapi.domestic.DomesticStockPriceEntity;
 import dev.kis.openapi.domestic.DomesticStockPriceRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -28,33 +24,18 @@ import java.util.LinkedHashMap;
 
 @RestController
 public class DashboardController {
-    private final KisCredentialProvider credentials;
-    private final KisProperties properties;
     private final DomesticStockSearchService stockMaster;
     private final DomesticStockPriceRepository history;
     private final DashboardWatchRepository watchRepository;
     private final PriceSchedule priceSchedule;
 
-    public DashboardController(KisCredentialProvider credentials, KisProperties properties, DomesticStockSearchService stockMaster,
+    public DashboardController(DomesticStockSearchService stockMaster,
                                DomesticStockPriceRepository history, DashboardWatchRepository watchRepository,
                                PriceSchedule priceSchedule) {
-        this.credentials = credentials;
-        this.properties = properties;
         this.stockMaster = stockMaster;
         this.history = history;
         this.watchRepository = watchRepository;
         this.priceSchedule = priceSchedule;
-    }
-
-    /** Read-only status of the app credentials configured in {@code kis.openapi.<environment>.*}. */
-    @GetMapping("/api/admin/credentials/{environment}")
-    Mono<CredentialStatus> getCredentials(@PathVariable KisEnvironment environment) {
-        KisProperties.Account account = properties.account(environment);
-        boolean configured = credentials.isConfigured(environment);
-        return Mono.just(new CredentialStatus(environment.name(), configured,
-                configured ? mask(account.getAppKey().strip()) : "",
-                maskAccount(account.getAccountNumber()),
-                environment == properties.getEnvironment()));
     }
 
     @GetMapping("/api/stocks/search")
@@ -121,9 +102,7 @@ public class DashboardController {
         };
     }
 
-    private String mask(String value) { return value == null || value.length() < 8 ? "••••••••" : value.substring(0, 4) + "••••" + value.substring(value.length() - 4); }
     static String maskAccount(String value) { return value == null || value.isBlank() ? "" : value.strip().length() <= 4 ? "••••" : "••••" + value.strip().substring(value.strip().length() - 4); }
-    public record CredentialStatus(String environment, boolean configured, String appKey, String accountNumber, boolean active) { }
     public record TrendPoint(Instant time, java.math.BigDecimal price) { }
     public record ScheduleRequest(List<String> codes) { }
     public record WatchedStock(String code, String name, String market, java.math.BigDecimal price) { }

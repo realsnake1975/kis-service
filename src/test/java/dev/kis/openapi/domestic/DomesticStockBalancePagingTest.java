@@ -80,6 +80,23 @@ class DomesticStockBalancePagingTest {
         assertEquals(DomesticStockClient.MAX_BALANCE_PAGES, balance.output1().size());
     }
 
+    @Test
+    void usesTheContextAccountNumberForEveryPage() {
+        var transport = new PagedTransport(i -> i == 0
+                ? page("[{\"pdno\":\"005930\"}]", "[{}]", "FK", "NK", "M")
+                : page("[{\"pdno\":\"000660\"}]", "[{}]", "", "", "D"));
+        var account = new dev.kis.openapi.auth.KisAccount("k", "s", "99998888", "22");
+
+        new DomesticStockClient(transport, properties()).getBalance()
+                .contextWrite(dev.kis.openapi.auth.KisAccountContext.with(account)).block();
+
+        assertEquals(2, transport.calls.size());
+        transport.calls.forEach(call -> {
+            assertEquals("99998888", call.query().get("CANO"));
+            assertEquals("22", call.query().get("ACNT_PRDT_CD"));
+        });
+    }
+
     private record Call(String trId, Map<String, String> query, String trCont) { }
 
     private static final class PagedTransport implements KisApiTransport {

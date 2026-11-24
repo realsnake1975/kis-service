@@ -16,13 +16,22 @@ public class KisTokenProvider {
     private final WebClient.Builder webClientBuilder;
     private final KisCredentialProvider credentialProvider;
 
-    /**
-     * Spring Cache stores a token per environment. Cache expiry is configured with a safety
-     * margin shorter than KIS's documented one-day token lifetime.
-     */
+    /** Token for the environment's default account (see {@link KisCredentialProvider#defaultAccount}). */
     @Cacheable(cacheNames = "kisAccessTokens", key = "#p0.name()", sync = true)
     public KisAccessToken getAccessToken(KisEnvironment environment) {
-        KisApiCredentials credentials = credentialProvider.getCredentials(environment);
+        return issue(environment, credentialProvider.getCredentials(environment));
+    }
+
+    /**
+     * Spring Cache stores one token per environment and app key, so several accounts can be served at once. Cache
+     * expiry is configured with a safety margin shorter than KIS's documented one-day token lifetime.
+     */
+    @Cacheable(cacheNames = "kisAccessTokens", key = "#p0.name() + ':' + #p1.appKey()", sync = true)
+    public KisAccessToken getAccessToken(KisEnvironment environment, KisApiCredentials credentials) {
+        return issue(environment, credentials);
+    }
+
+    private KisAccessToken issue(KisEnvironment environment, KisApiCredentials credentials) {
         try {
             KisAccessToken token = webClientBuilder.clone().build()
                     .post()

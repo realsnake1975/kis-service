@@ -45,9 +45,11 @@ public class KisRestClient implements KisApiTransport {
     private Mono<KisApiPage> execute(String path, String trId, Map<String, String> query,
                                      Map<String, ?> body, String requestTrCont) {
         KisEnvironment environment = properties.getEnvironment();
-        return Mono.fromCallable(() -> new AuthContext(
-                        tokenProvider.getAccessToken(environment), credentialProvider.getCredentials(environment)))
-                .subscribeOn(Schedulers.boundedElastic())
+        return Mono.deferContextual(context -> Mono.fromCallable(() -> {
+                            KisApiCredentials credentials = credentialProvider.resolve(context, environment).credentials();
+                            return new AuthContext(tokenProvider.getAccessToken(environment, credentials), credentials);
+                        })
+                        .subscribeOn(Schedulers.boundedElastic()))
                 .flatMap(auth -> {
                     WebClient.RequestBodySpec request = webClientBuilder.clone().build()
                             .method(body == null ? org.springframework.http.HttpMethod.GET : org.springframework.http.HttpMethod.POST)

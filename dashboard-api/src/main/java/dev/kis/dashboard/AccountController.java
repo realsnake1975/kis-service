@@ -1,14 +1,19 @@
 package dev.kis.dashboard;
 
 import dev.kis.openapi.KisApiResponse;
+import dev.kis.openapi.KisEnvironment;
+import dev.kis.openapi.auth.KisAccount;
+import dev.kis.openapi.auth.KisAccountContext;
 import dev.kis.openapi.KisProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
@@ -23,24 +28,37 @@ public class AccountController {
     private static final Logger log = LoggerFactory.getLogger(AccountController.class);
     private final AccountBalanceSource source;
     private final KisProperties properties;
+    private final UserAccountLookup accounts;
 
-    public AccountController(AccountBalanceSource source, KisProperties properties) {
+    public AccountController(AccountBalanceSource source, KisProperties properties, UserAccountLookup accounts) {
         this.source = source;
         this.properties = properties;
+        this.accounts = accounts;
     }
 
+    /** Balance of the signed-in user's own registered account; other users' accounts are never used. */
     @GetMapping("/api/account/balance")
-    Mono<AccountBalance> balance() {
+    Mono<AccountBalance> balance(Authentication authentication) {
+        String userKey = UserKeys.of(authentication);
+        KisEnvironment environment = properties.getEnvironment();
+        return Mono.fromCallable(() -> accounts.find(userKey, environment))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(found -> found.map(account -> fetch(account))
+                        .orElseGet(() -> Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "등록된 KIS 계좌 정보가 없습니다."))));
+    }
+
+    private Mono<AccountBalance> fetch(KisAccount account) {
         return Mono.defer(source::balance)
-                .onErrorMap(IllegalStateException.class, e -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "계좌 정보가 서버 설정에 없습니다."))
+                .contextWrite(KisAccountContext.with(account))
+                .onErrorMap(IllegalStateException.class, e -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "KIS 계좌 정보가 올바르지 않습니다."))
                 .onErrorMap(e -> !(e instanceof ResponseStatusException), e -> {
                     log.warn("KIS balance inquiry failed", e);
                     return new ResponseStatusException(HttpStatus.BAD_GATEWAY, "한국투자증권 잔고 조회에 실패했습니다.");
                 })
-                .map(this::toBalance);
+                .map(response -> toBalance(response, account));
     }
 
-    AccountBalance toBalance(KisApiResponse response) {
+    AccountBalance toBalance(KisApiResponse response, KisAccount account) {
         if (!response.isSuccess()) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY,
                     "한국투자증권 잔고 조회에 실패했습니다: " + (response.msg1() == null ? response.msgCd() : response.msg1().strip()));
@@ -61,9 +79,7 @@ public class AccountController {
         BigDecimal profitLoss = number(summary, "evlu_pfls_smtl_amt");
         BigDecimal profitRate = purchase == null || profitLoss == null || purchase.signum() == 0 ? null
                 : profitLoss.multiply(BigDecimal.valueOf(100)).divide(purchase, 2, RoundingMode.HALF_UP);
-        var environment = properties.getEnvironment();
-        return new AccountBalance(environment.name(),
-                DashboardController.maskAccount(properties.account(environment).getAccountNumber()),
+        return new AccountBalance(properties.getEnvironment().name(), DashboardController.maskAccount(account.accountNumber()),
                 number(summary, "tot_evlu_amt"), number(summary, "nass_amt"), number(summary, "dnca_tot_amt"),
                 number(summary, "prvs_rcdl_excc_amt"), purchase, number(summary, "evlu_amt_smtl_amt"),
                 profitLoss, profitRate, holdings, Instant.now());
