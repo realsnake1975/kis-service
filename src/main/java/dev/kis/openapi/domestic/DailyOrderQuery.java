@@ -1,7 +1,6 @@
 package dev.kis.openapi.domestic;
 
 import dev.kis.openapi.KisApiPage;
-import tools.jackson.databind.JsonNode;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -67,12 +66,11 @@ public record DailyOrderQuery(
         if (!"F".equalsIgnoreCase(trCont) && !"M".equalsIgnoreCase(trCont)) {
             throw new IllegalArgumentException("KIS response has no next page (tr_cont=" + trCont + ")");
         }
-        JsonNode output = response.data().output2();
-        String fk100 = output == null ? "" : output.path("ctx_area_fk100").asString("");
-        String nk100 = output == null ? "" : output.path("ctx_area_nk100").asString("");
-        if (fk100.isBlank() && nk100.isBlank()) {
-            throw new IllegalArgumentException("KIS response did not contain continuation keys in output2");
+        if (!response.hasNextPage()) {
+            throw new IllegalArgumentException("KIS response did not contain continuation keys");
         }
+        String fk100 = response.continuationSearchKey();
+        String nk100 = response.continuationKey();
         return new DailyOrderQuery(startDate, endDate, periodRange, side, fillStatus, sortOrder, productType,
                 symbol, orderBranchNo, orderNo, itemType, exchangeCode, fk100, nk100, "N");
     }

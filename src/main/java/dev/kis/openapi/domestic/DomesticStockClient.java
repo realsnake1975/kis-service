@@ -6,12 +6,19 @@ import dev.kis.openapi.KisEnvironment;
 import dev.kis.openapi.KisProperties;
 import dev.kis.openapi.internal.KisApiTransport;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.JsonNodeFactory;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class DomesticStockClient {
@@ -21,6 +28,9 @@ public class DomesticStockClient {
     private static final String AMEND_CANCEL_PATH = "/uapi/domestic-stock/v1/trading/order-rvsecncl";
     private static final String DAILY_ORDERS_PATH = "/uapi/domestic-stock/v1/trading/inquire-daily-ccld";
     private static final String PRICE_TR_ID = "FHKST01010100";
+    static final int MAX_BALANCE_PAGES = 10;
+    /** Spacing between continuation calls so paging stays under the KIS per-second limit. */
+    private static final Duration PAGE_DELAY = Duration.ofMillis(100);
 
     private final KisApiTransport restClient;
     private final KisProperties properties;
@@ -50,11 +60,27 @@ public class DomesticStockClient {
                 "CNDT_PRIC", ""));
     }
 
+    /**
+     * Domestic stock balance across every page KIS returns. Holdings ({@code output1}) are concatenated in page
+     * order and the account summary ({@code output2}) comes from the first page. Stops after
+     * {@value #MAX_BALANCE_PAGES} pages, like the official samples.
+     */
     public Mono<KisApiResponse> getBalance() {
+        return getBalancePage("", "", "")
+                .expand(page -> page.hasNextPage()
+                        ? Mono.delay(PAGE_DELAY).then(getBalancePage(page.continuationSearchKey(), page.continuationKey(), "N"))
+                        : Mono.empty())
+                .take(MAX_BALANCE_PAGES)
+                .collectList()
+                .map(this::mergeBalancePages);
+    }
+
+    /** A single page of the domestic stock balance; pass empty keys and {@code tr_cont} for the first page. */
+    public Mono<KisApiPage> getBalancePage(String continuationSearchKey, String continuationKey, String trCont) {
         KisEnvironment environment = properties.getEnvironment();
         KisProperties.Account account = requireAccount(environment);
         String trId = environment == KisEnvironment.REAL ? "TTTC8434R" : "VTTC8434R";
-        return restClient.get(BALANCE_PATH, trId, Map.ofEntries(
+        return restClient.getPage(BALANCE_PATH, trId, Map.ofEntries(
                 Map.entry("CANO", account.getAccountNumber()),
                 Map.entry("ACNT_PRDT_CD", account.getAccountProductCode()),
                 Map.entry("AFHR_FLPR_YN", "N"),
@@ -64,8 +90,27 @@ public class DomesticStockClient {
                 Map.entry("FUND_STTL_ICLD_YN", "N"),
                 Map.entry("FNCG_AMT_AUTO_RDPT_YN", "N"),
                 Map.entry("PRCS_DVSN", "00"),
-                Map.entry("CTX_AREA_FK100", ""),
-                Map.entry("CTX_AREA_NK100", "")));
+                Map.entry("CTX_AREA_FK100", continuationSearchKey == null ? "" : continuationSearchKey),
+                Map.entry("CTX_AREA_NK100", continuationKey == null ? "" : continuationKey)),
+                trCont == null ? "" : trCont);
+    }
+
+    private KisApiResponse mergeBalancePages(List<KisApiPage> pages) {
+        KisApiPage last = pages.get(pages.size() - 1);
+        if (pages.size() == MAX_BALANCE_PAGES && last.hasNextPage()) {
+            log.warn("KIS balance has more than {} pages; returning the first {}", MAX_BALANCE_PAGES, MAX_BALANCE_PAGES);
+        }
+        if (pages.size() == 1) return pages.get(0).data();
+        ArrayNode holdings = JsonNodeFactory.instance.arrayNode();
+        for (KisApiPage page : pages) {
+            JsonNode rows = page.data().output1();
+            if (rows == null) continue;
+            if (rows.isArray()) rows.forEach(holdings::add);
+            else holdings.add(rows);
+        }
+        KisApiResponse first = pages.get(0).data();
+        KisApiResponse lastData = last.data();
+        return new KisApiResponse(lastData.rtCd(), lastData.msgCd(), lastData.msg1(), first.output(), holdings, first.output2());
     }
 
     public Mono<KisApiResponse> amendOrCancelOrder(OrderAmendCancelRequest request) {
